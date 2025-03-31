@@ -724,11 +724,14 @@ class LeAudioClientImpl : public LeAudioClient {
               "s_state: " + ToString(audio_sender_state_));
       if (audio_receiver_state_ == AudioState::IDLE &&
           (configuration_context_type_ == LeAudioContextType::CONVERSATIONAL ||
-          configuration_context_type_ == LeAudioContextType::GAME)) {
+          configuration_context_type_ == LeAudioContextType::GAME) &&
+          le_audio_sink_hal_client_) {
         log::info("Suspended for both directions if switch to voice or game context");
         le_audio_sink_hal_client_->SuspendedForReconfiguration();
       }
-      le_audio_source_hal_client_->SuspendedForReconfiguration();
+      if(le_audio_source_hal_client_) {
+        le_audio_source_hal_client_->SuspendedForReconfiguration();
+      }
     }
     if (audio_receiver_state_ > AudioState::IDLE) {
       LeAudioLogHistory::Get()->AddLogHistory(
@@ -736,7 +739,9 @@ class LeAudioClientImpl : public LeAudioClient {
           kLogAfSuspendForReconfig + "LocalSink",
           "r_state: " + ToString(audio_receiver_state_) +
               "s_state: " + ToString(audio_sender_state_));
-      le_audio_sink_hal_client_->SuspendedForReconfiguration();
+      if(le_audio_sink_hal_client_) {
+        le_audio_sink_hal_client_->SuspendedForReconfiguration();
+      }
     }
   }
 
@@ -747,8 +752,9 @@ class LeAudioClientImpl : public LeAudioClient {
           kLogAfReconfigComplete + "LocalSource",
           "r_state: " + ToString(audio_receiver_state_) +
               "s_state: " + ToString(audio_sender_state_));
-
-      le_audio_source_hal_client_->ReconfigurationComplete();
+      if(le_audio_source_hal_client_) {
+        le_audio_source_hal_client_->ReconfigurationComplete();
+      }
     }
     if (directions & bluetooth::le_audio::types::kLeAudioDirectionSource) {
       LeAudioLogHistory::Get()->AddLogHistory(
@@ -756,13 +762,16 @@ class LeAudioClientImpl : public LeAudioClient {
           kLogAfReconfigComplete + "LocalSink",
           "r_state: " + ToString(audio_receiver_state_) +
               "s_state: " + ToString(audio_sender_state_));
-
-      le_audio_sink_hal_client_->ReconfigurationComplete();
+      if(le_audio_sink_hal_client_) {
+        le_audio_sink_hal_client_->ReconfigurationComplete();
+      }
     }
   }
 
   void CancelLocalAudioSourceStreamingRequest() {
-    le_audio_source_hal_client_->CancelStreamingRequest();
+    if(le_audio_source_hal_client_) {
+      le_audio_source_hal_client_->CancelStreamingRequest();
+    }
 
     LeAudioLogHistory::Get()->AddLogHistory(
         kLogBtCallAf, active_group_id_, RawAddress::kEmpty,
@@ -773,7 +782,9 @@ class LeAudioClientImpl : public LeAudioClient {
   }
 
   void CancelLocalAudioSinkStreamingRequest() {
-    le_audio_sink_hal_client_->CancelStreamingRequest();
+    if(le_audio_sink_hal_client_) {
+      le_audio_sink_hal_client_->CancelStreamingRequest();
+    }
 
     LeAudioLogHistory::Get()->AddLogHistory(
         kLogBtCallAf, active_group_id_, RawAddress::kEmpty,
@@ -1479,6 +1490,7 @@ class LeAudioClientImpl : public LeAudioClient {
      * is different from audio framework to avoid audio choppy
      * this is called when we bluetooth frame duration is changed
      */
+    log::verbose("");
     log::assert_that(active_group_id_ != bluetooth::groups::kGroupUnknown, "Active group is not set.");
     log::assert_that(le_audio_source_hal_client_ != nullptr, "Source session not acquired");
     log::assert_that(le_audio_sink_hal_client_ != nullptr, "Sink session not acquired");
@@ -4176,7 +4188,9 @@ class LeAudioClientImpl : public LeAudioClient {
   }
 
   void ConfirmLocalAudioSourceStreamingRequest(bool force) {
-    le_audio_source_hal_client_->ConfirmStreamingRequest(force);
+    if(le_audio_source_hal_client_) {
+      le_audio_source_hal_client_->ConfirmStreamingRequest(force);
+    }
 
     LeAudioLogHistory::Get()->AddLogHistory(
         kLogBtCallAf, active_group_id_, RawAddress::kEmpty,
@@ -4187,7 +4201,9 @@ class LeAudioClientImpl : public LeAudioClient {
   }
 
   void ConfirmLocalAudioSinkStreamingRequest(bool force) {
-    le_audio_sink_hal_client_->ConfirmStreamingRequest(force);
+    if(le_audio_sink_hal_client_) {
+      le_audio_sink_hal_client_->ConfirmStreamingRequest(force);
+    }
 
     LeAudioLogHistory::Get()->AddLogHistory(
         kLogBtCallAf, active_group_id_, RawAddress::kEmpty,
@@ -5004,8 +5020,10 @@ class LeAudioClientImpl : public LeAudioClient {
           defer_sink_suspend_ack_until_stop_ = true;
           OnAudioSuspend();
         } else {
-          log::info("calling sink ConfirmSuspendRequest in audio_receiver_state_ IDLE");
-          le_audio_sink_hal_client_->ConfirmSuspendRequest();
+          if (le_audio_sink_hal_client_) {
+            log::info("calling sink ConfirmSuspendRequest in audio_receiver_state_ IDLE");
+            le_audio_sink_hal_client_->ConfirmSuspendRequest();
+          }
         }
         return;
       case AudioState::READY_TO_RELEASE:
@@ -5719,6 +5737,8 @@ class LeAudioClientImpl : public LeAudioClient {
         remote_metadata.get(remote_direction).test_any(live_context) &&
         remote_metadata.get(remote_other_direction).test_any(game_context)) {
       log::debug("Gaming vbc enabled");
+      local_metadata_context_types_.sink = game_context;
+      local_metadata_context_types_.source = game_context;
       is_game_vbc = true;
     }
 

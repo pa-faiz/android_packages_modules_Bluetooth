@@ -219,7 +219,6 @@ extern const module_t rust_module;
 extern const module_t stack_config_module;
 extern const module_t device_iot_config_module;
 extern const module_t cs_config_module;
-bool host_supports_cs = false;
 
 struct module_lookup {
   const char* name;
@@ -254,17 +253,6 @@ inline const module_t* get_local_module(const char* name) {
 static void init_stack_internal(bluetooth::core::CoreInterface* interface) {
   // all callbacks out of libbluetooth-core happen via this interface
   interfaceToProfiles = interface;
-
-  /* Check if Host supports CS */
-  {
-    char value[PROPERTY_VALUE_MAX];
-    if (osi_property_get("persist.vendor.service.bt.cs.supported", value, "false")) {
-      if (strncmp(value, "true", PROPERTY_VALUE_MAX) == 0)
-        host_supports_cs = true;
-    }
-    log::info("channel sounding {} in host", host_supports_cs ? "enabled" : "disabled");
-  }
-
   module_management_start();
 
   main_thread_start_up();
@@ -355,11 +343,9 @@ static void event_start_up_stack(bluetooth::core::CoreInterface* interface,
     return;
   }
 
-  if (host_supports_cs) {
     bluetooth::ras::GetRasServer()->Initialize();
     bluetooth::ras::GetRasClient()->Initialize();
     module_init(get_local_module(CS_CONFIG_MODULE));
-  }
 
   stack_is_running = true;
   log::info("finished");
@@ -404,7 +390,7 @@ static void event_shut_down_stack(ProfileStopCallback stopProfiles) {
   l2c_free();
   get_btm_client_interface().lifecycle.btm_ble_free();
 
-  get_btm_client_interface().lifecycle.btm_free();
+  do_in_main_thread(FROM_HERE, base::BindOnce(get_btm_client_interface().lifecycle.btm_free));
 
   hack_future = future_new();
   do_in_jni_thread(base::BindOnce(event_signal_stack_down, nullptr));
@@ -457,10 +443,7 @@ static void event_clean_up_stack(std::promise<void> promise,
   module_clean_up(get_local_module(OSI_MODULE));
   log::info("Gd shim module disabled");
   module_shut_down(get_local_module(GD_SHIM_MODULE));
-
-  if (host_supports_cs) {
-    module_clean_up(get_local_module(CS_CONFIG_MODULE));
-  }
+  module_clean_up(get_local_module(CS_CONFIG_MODULE));
 
   module_management_stop();
   log::info("finished");
